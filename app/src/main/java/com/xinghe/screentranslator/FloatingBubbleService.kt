@@ -86,7 +86,15 @@ class FloatingBubbleService : Service() {
                             action = MainActivity.ACTION_CAPTURE_REQUEST
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                         }
-                        startActivity(launch)
+                        try {
+                            startActivity(launch)
+                        } catch (e: Exception) {
+                            android.widget.Toast.makeText(
+                                this,
+                                "无法打开屏幕授权页面，请先打开星河屏幕翻译并开启屏幕共享权限",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
                     true
                 }
