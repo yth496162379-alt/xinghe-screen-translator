@@ -3,7 +3,9 @@ package com.xinghe.screentranslator
 import android.app.Activity
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,9 +31,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleCaptureIntent(intent)
         setContent {
-            var status by remember { mutableStateOf("准备就绪。点击下方按钮，允许系统共享屏幕。") }
+            var status by remember { mutableStateOf("准备就绪。先开启悬浮球，再点击悬浮球翻译。") }
             var translated by remember { mutableStateOf("翻译结果将在这里显示。") }
+            var overlayEnabled by remember { mutableStateOf(Settings.canDrawOverlays(this)) }
             DisposableEffect(Unit) {
                 val receiver = object : android.content.BroadcastReceiver() {
                     override fun onReceive(context: android.content.Context?, intent: Intent?) {
@@ -52,11 +56,24 @@ class MainActivity : ComponentActivity() {
                         Text("英文屏幕识别 · 简体中文翻译", style = MaterialTheme.typography.bodyLarge)
                         Spacer(Modifier.height(24.dp))
                         Button(onClick = {
-                            val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-                            captureLauncher.launch(manager.createScreenCaptureIntent())
-                            status = "等待系统屏幕共享授权…"
-                        }, modifier = Modifier.fillMaxWidth()) { Text("开始翻译当前屏幕") }
-                        Spacer(Modifier.height(12.dp))
+                            if (!Settings.canDrawOverlays(this@MainActivity)) {
+                                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                                status = "请在系统设置中允许“显示在其他应用上层”，然后返回本应用。"
+                            } else {
+                                startService(Intent(this@MainActivity, FloatingBubbleService::class.java).setAction(FloatingBubbleService.ACTION_SHOW))
+                                overlayEnabled = true
+                                status = "悬浮球已开启。点击屏幕上的星河圆球开始翻译。"
+                            }
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (overlayEnabled) "开启 / 显示悬浮球" else "授权并开启悬浮球")
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedButton(onClick = {
+                            stopService(Intent(this@MainActivity, FloatingBubbleService::class.java))
+                            overlayEnabled = false
+                            status = "悬浮球已关闭"
+                        }, modifier = Modifier.fillMaxWidth()) { Text("关闭悬浮球") }
+                        Spacer(Modifier.height(16.dp))
                         Text(status, style = MaterialTheme.typography.bodyMedium)
                         Spacer(Modifier.height(20.dp))
                         Text("中文翻译结果", style = MaterialTheme.typography.titleLarge)
@@ -65,10 +82,27 @@ class MainActivity : ComponentActivity() {
                             Text(translated, Modifier.padding(16.dp), style = MaterialTheme.typography.bodyLarge)
                         }
                         Spacer(Modifier.height(20.dp))
-                        Text("说明：每次开始屏幕识别都需要你在 Android 系统弹窗中明确授权。首次翻译需要联网下载语言模型；模型下载后可尝试离线翻译。", style = MaterialTheme.typography.bodySmall)
+                        Text("提示：Android 系统要求你每次新建屏幕共享会话时明确授权。首次翻译需要联网下载语言模型。", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleCaptureIntent(intent)
+    }
+
+    private fun handleCaptureIntent(intent: Intent?) {
+        if (intent?.action == ACTION_CAPTURE_REQUEST) {
+            val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            captureLauncher.launch(manager.createScreenCaptureIntent())
+        }
+    }
+
+    companion object {
+        const val ACTION_CAPTURE_REQUEST = "com.xinghe.screentranslator.REQUEST_CAPTURE"
     }
 }
