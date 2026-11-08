@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 class MainActivity : ComponentActivity() {
+    private var pendingCaptureRequest = false
+
     private val captureLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             val service = Intent(this, ScreenCaptureService::class.java).apply {
@@ -31,7 +33,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleCaptureIntent(intent)
+        pendingCaptureRequest = intent?.action == ACTION_CAPTURE_REQUEST
         setContent {
             var status by remember { mutableStateOf("准备就绪。先开启悬浮球，再点击悬浮球翻译。") }
             var translated by remember { mutableStateOf("翻译结果将在这里显示。") }
@@ -92,13 +94,19 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleCaptureIntent(intent)
+        if (intent.action == ACTION_CAPTURE_REQUEST) pendingCaptureRequest = true
     }
 
-    private fun handleCaptureIntent(intent: Intent?) {
-        if (intent?.action == ACTION_CAPTURE_REQUEST) {
-            val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            captureLauncher.launch(manager.createScreenCaptureIntent())
+    override fun onResume() {
+        super.onResume()
+        if (pendingCaptureRequest) {
+            pendingCaptureRequest = false
+            window.decorView.post {
+                if (!isFinishing && !isDestroyed) {
+                    val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                    captureLauncher.launch(manager.createScreenCaptureIntent())
+                }
+            }
         }
     }
 
